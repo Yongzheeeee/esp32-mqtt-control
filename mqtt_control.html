@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RGB LED Control (MQTT)</title>
+  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+  <style>
+    body { font-family: Arial; text-align: center; padding: 50px; background: #f0f0f0; }
+    h1 { color: #333; }
+    .btn {
+      display: inline-block;
+      width: 100px;
+      height: 100px;
+      margin: 20px;
+      border: none;
+      border-radius: 50%;
+      cursor: pointer;
+      font-size: 16px;
+      color: white;
+      transition: transform 0.2s;
+    }
+    .btn:hover { transform: scale(1.1); }
+    .btn-red { background: #ff4444; }
+    .btn-green { background: #44ff44; color: #333; }
+    .btn-blue { background: #4444ff; }
+    .btn-off { background: #888; }
+    .status { margin-top: 30px; font-size: 20px; }
+    .log { margin-top: 20px; font-size: 14px; color: #666; }
+    .connected { color: green; }
+    .disconnected { color: red; }
+  </style>
+</head>
+<body>
+  <h1>RGB LED Control (MQTT)</h1>
+  <div id="connectionStatus" class="disconnected">Connecting...</div>
+  <div>
+    <button class="btn btn-red" onclick="sendCommand('red')">Red</button>
+    <button class="btn btn-green" onclick="sendCommand('green')">Green</button>
+    <button class="btn btn-blue" onclick="sendCommand('blue')">Blue</button>
+    <button class="btn btn-off" onclick="sendCommand('off')">OFF</button>
+  </div>
+  <div class="status">Current: <span id="status">Unknown</span></div>
+  <div class="log" id="log"></div>
+
+  <script>
+    const topic = 'esp32/rgb_led';
+    const broker = 'wss://broker.emqx.io:8084/mqtt';
+    
+    const client = mqtt.connect(broker, {
+      clientId: 'web_client_' + Math.random().toString(16).substr(2, 8)
+    });
+
+    client.on('connect', function() {
+      console.log('Connected to MQTT broker');
+      document.getElementById('connectionStatus').innerHTML = '? Connected';
+      document.getElementById('connectionStatus').className = 'connected';
+      client.subscribe(topic);
+      addLog('Connected to MQTT broker');
+    });
+
+    client.on('message', function(top, message) {
+      console.log('Received:', message.toString());
+      document.getElementById('status').innerText = message.toString();
+      addLog('Received: ' + message.toString());
+    });
+
+    client.on('error', function(err) {
+      console.error('Error:', err);
+      document.getElementById('connectionStatus').innerHTML = '? Error';
+      document.getElementById('connectionStatus').className = 'disconnected';
+    });
+
+    function sendCommand(cmd) {
+      client.publish(topic, cmd);
+      addLog('Sent: ' + cmd);
+    }
+
+    function addLog(msg) {
+      const log = document.getElementById('log');
+      log.innerHTML = msg + '<br>' + log.innerHTML;
+    }
+  </script>
+</body>
+</html>
