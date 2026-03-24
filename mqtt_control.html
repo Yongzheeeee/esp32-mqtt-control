@@ -29,51 +29,124 @@
     .log { margin-top: 20px; font-size: 14px; color: #666; }
     .connected { color: green; }
     .disconnected { color: red; }
+
+    #loginBox {
+      background: white;
+      padding: 40px;
+      border-radius: 10px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+      max-width: 300px;
+      margin: 100px auto;
+    }
+    #loginBox input {
+      width: 100%;
+      padding: 10px;
+      margin: 10px 0;
+      box-sizing: border-box;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+    }
+    #loginBox button {
+      width: 100%;
+      padding: 10px;
+      margin-top: 10px;
+      background: #333;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    #loginBox button:hover { background: #555; }
+    #loginError { color: red; margin-top: 10px; }
+
+    #controlPanel { display: none; }
   </style>
 </head>
 <body>
-  <h1>RGB LED Control (MQTT)</h1>
-  <div id="connectionStatus" class="disconnected">Connecting...</div>
-  <div>
-    <button class="btn btn-red" onclick="sendCommand('red')">Red</button>
-    <button class="btn btn-green" onclick="sendCommand('green')">Green</button>
-    <button class="btn btn-blue" onclick="sendCommand('blue')">Blue</button>
-    <button class="btn btn-off" onclick="sendCommand('off')">OFF</button>
+  <div id="loginBox">
+    <h2>Login</h2>
+    <input type="text" id="username" placeholder="Username" />
+    <input type="password" id="password" placeholder="Password" />
+    <button onclick="checkLogin()">Login</button>
+    <div id="loginError"></div>
   </div>
-  <div class="status">Current: <span id="status">Unknown</span></div>
-  <div class="log" id="log"></div>
+
+  <div id="controlPanel">
+    <h1>RGB LED Control (MQTT)</h1>
+    <div id="connectionStatus" class="disconnected">Connecting...</div>
+    <div>
+      <button class="btn btn-red" onclick="sendCommand('red')">Red</button>
+      <button class="btn btn-green" onclick="sendCommand('green')">Green</button>
+      <button class="btn btn-blue" onclick="sendCommand('blue')">Blue</button>
+      <button class="btn btn-off" onclick="sendCommand('off')">OFF</button>
+    </div>
+    <div class="status">Current: <span id="status">Unknown</span></div>
+    <div class="log" id="log"></div>
+    <button onclick="logout()" style="margin-top:30px; padding:10px 20px;">Logout</button>
+  </div>
 
   <script>
     const topic = 'esp32/rgb_led';
     const broker = 'wss://broker.emqx.io:8084/mqtt';
-    
-    const client = mqtt.connect(broker, {
-      clientId: 'web_client_' + Math.random().toString(16).substr(2, 8)
-    });
 
-    client.on('connect', function() {
-      console.log('Connected to MQTT broker');
-      document.getElementById('connectionStatus').innerHTML = '? Connected';
-      document.getElementById('connectionStatus').className = 'connected';
-      client.subscribe(topic);
-      addLog('Connected to MQTT broker');
-    });
+    const USERNAME = 'admin';
+    const PASSWORD = 'esp32';
 
-    client.on('message', function(top, message) {
-      console.log('Received:', message.toString());
-      document.getElementById('status').innerText = message.toString();
-      addLog('Received: ' + message.toString());
-    });
+    function checkLogin() {
+      const user = document.getElementById('username').value;
+      const pass = document.getElementById('password').value;
+      if (user === USERNAME && pass === PASSWORD) {
+        document.getElementById('loginBox').style.display = 'none';
+        document.getElementById('controlPanel').style.display = 'block';
+        initMQTT();
+      } else {
+        document.getElementById('loginError').innerText = 'Invalid username or password';
+      }
+    }
 
-    client.on('error', function(err) {
-      console.error('Error:', err);
-      document.getElementById('connectionStatus').innerHTML = '? Error';
-      document.getElementById('connectionStatus').className = 'disconnected';
-    });
+    function logout() {
+      document.getElementById('loginBox').style.display = 'block';
+      document.getElementById('controlPanel').style.display = 'none';
+      document.getElementById('username').value = '';
+      document.getElementById('password').value = '';
+      document.getElementById('loginError').innerText = '';
+    }
+
+    let client = null;
+
+    function initMQTT() {
+      if (client) return;
+
+      client = mqtt.connect(broker, {
+        clientId: 'web_client_' + Math.random().toString(16).substr(2, 8)
+      });
+
+      client.on('connect', function() {
+        console.log('Connected to MQTT broker');
+        document.getElementById('connectionStatus').innerHTML = '✓ Connected';
+        document.getElementById('connectionStatus').className = 'connected';
+        client.subscribe(topic);
+        addLog('Connected to MQTT broker');
+      });
+
+      client.on('message', function(top, message) {
+        console.log('Received:', message.toString());
+        document.getElementById('status').innerText = message.toString();
+        addLog('Received: ' + message.toString());
+      });
+
+      client.on('error', function(err) {
+        console.error('Error:', err);
+        document.getElementById('connectionStatus').innerHTML = '✗ Error';
+        document.getElementById('connectionStatus').className = 'disconnected';
+      });
+    }
 
     function sendCommand(cmd) {
-      client.publish(topic, cmd);
-      addLog('Sent: ' + cmd);
+      if (client && client.connected) {
+        client.publish(topic, cmd);
+        addLog('Sent: ' + cmd);
+      }
     }
 
     function addLog(msg) {
