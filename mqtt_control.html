@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>RGB LED Control (MQTT)</title>
+  <title>RGB LED Control</title>
   <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
   <style>
     body { font-family: Arial; text-align: center; padding: 50px; background: #f0f0f0; }
@@ -26,7 +26,7 @@
     .btn-blue { background: #4444ff; }
     .btn-off { background: #888; }
     .status { margin-top: 30px; font-size: 20px; }
-    .log { margin-top: 20px; font-size: 14px; color: #666; }
+    .log { margin-top: 20px; font-size: 14px; color: #666; max-height: 150px; overflow-y: auto; border: 1px solid #ddd; padding: 10px; background: white; }
     .connected { color: green; }
     .disconnected { color: red; }
 
@@ -35,12 +35,12 @@
       padding: 40px;
       border-radius: 10px;
       box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-      max-width: 300px;
+      max-width: 350px;
       margin: 100px auto;
     }
     #loginBox input {
       width: 100%;
-      padding: 10px;
+      padding: 12px;
       margin: 10px 0;
       box-sizing: border-box;
       border: 1px solid #ccc;
@@ -48,7 +48,7 @@
     }
     #loginBox button {
       width: 100%;
-      padding: 10px;
+      padding: 12px;
       margin-top: 10px;
       background: #333;
       color: white;
@@ -60,20 +60,31 @@
     #loginError { color: red; margin-top: 10px; }
 
     #controlPanel { display: none; }
+    .device-info { background: #e8f5e9; padding: 10px; border-radius: 5px; margin: 10px 0; }
+    .user-badge { background: #2196F3; color: white; padding: 5px 15px; border-radius: 20px; display: inline-block; }
+    .online-users { margin-top: 10px; font-size: 12px; color: #666; }
   </style>
 </head>
 <body>
   <div id="loginBox">
-    <h2>Login</h2>
+    <h2>User Login</h2>
     <input type="text" id="username" placeholder="Username" />
     <input type="password" id="password" placeholder="Password" />
     <button onclick="checkLogin()">Login</button>
     <div id="loginError"></div>
+    <div style="margin-top:20px; text-align:left; font-size:12px; color:#666;">
+      <b>Demo Accounts:</b><br>
+      User: <b>user1</b> / Pass: <b>123456</b><br>
+      User: <b>user2</b> / Pass: <b>abcdef</b>
+    </div>
   </div>
 
   <div id="controlPanel">
-    <h1>RGB LED Control (MQTT)</h1>
-    <div id="connectionStatus" class="disconnected">Connecting...</div>
+    <h1>RGB LED Control</h1>
+    <div class="device-info">
+      <span class="user-badge">User: <span id="myUsername">-</span></span>
+      | Status: <span id="connectionStatus" class="disconnected">Connecting...</span>
+    </div>
     <div>
       <button class="btn btn-red" onclick="sendCommand('red')">Red</button>
       <button class="btn btn-green" onclick="sendCommand('green')">Green</button>
@@ -86,18 +97,35 @@
   </div>
 
   <script>
-    const topic = 'esp32/rgb_led';
     const broker = 'wss://broker.emqx.io:8084/mqtt';
 
-    const USERNAME = 'esp32';
-    const PASSWORD = '123456';
+    const USERS = {
+      'user1': '123456',
+      'user2': 'abcdef'
+    };
+
+    const DEVICE_ID = 'led001';
+    const topicCommand = 'esp32/' + DEVICE_ID + '/command';
+    const topicStatus = 'esp32/' + DEVICE_ID + '/status';
+    const topicUsers = 'esp32/' + DEVICE_ID + '/users';
+
+    let currentUser = '';
+    let client = null;
 
     function checkLogin() {
-      const user = document.getElementById('username').value;
-      const pass = document.getElementById('password').value;
-      if (user === USERNAME && pass === PASSWORD) {
+      const username = document.getElementById('username').value.trim();
+      const password = document.getElementById('password').value;
+
+      if (!username || !password) {
+        document.getElementById('loginError').innerText = 'Please enter username and password';
+        return;
+      }
+
+      if (USERS[username] && USERS[username] === password) {
+        currentUser = username;
         document.getElementById('loginBox').style.display = 'none';
         document.getElementById('controlPanel').style.display = 'block';
+        document.getElementById('myUsername').innerText = currentUser;
         initMQTT();
       } else {
         document.getElementById('loginError').innerText = 'Invalid username or password';
@@ -105,18 +133,21 @@
     }
 
     function logout() {
+      if (client) {
+        client.publish(topicUsers, currentUser + ' left');
+        client.end();
+        client = null;
+      }
       document.getElementById('loginBox').style.display = 'block';
       document.getElementById('controlPanel').style.display = 'none';
       document.getElementById('username').value = '';
       document.getElementById('password').value = '';
       document.getElementById('loginError').innerText = '';
+      document.getElementById('log').innerHTML = '';
+      currentUser = '';
     }
 
-    let client = null;
-
     function initMQTT() {
-      if (client) return;
-
       client = mqtt.connect(broker, {
         clientId: 'web_client_' + Math.random().toString(16).substr(2, 8)
       });
@@ -125,14 +156,17 @@
         console.log('Connected to MQTT broker');
         document.getElementById('connectionStatus').innerHTML = '✓ Connected';
         document.getElementById('connectionStatus').className = 'connected';
-        client.subscribe(topic);
-        addLog('Connected to MQTT broker');
+        client.subscribe(topicStatus);
+        client.subscribe(topicUsers);
+        addLog('Connected as: ' + currentUser);
+        client.publish(topicUsers, currentUser + ' joined');
       });
 
       client.on('message', function(top, message) {
-        console.log('Received:', message.toString());
-        document.getElementById('status').innerText = message.toString();
-        addLog('Received: ' + message.toString());
+        const msg = message.toString();
+        console.log('Received:', msg);
+        document.getElementById('status').innerText = msg;
+        addLog(msg);
       });
 
       client.on('error', function(err) {
@@ -140,18 +174,20 @@
         document.getElementById('connectionStatus').innerHTML = '✗ Error';
         document.getElementById('connectionStatus').className = 'disconnected';
       });
-    }
 
-    function sendCommand(cmd) {
-      if (client && client.connected) {
-        client.publish(topic, cmd);
-        addLog('Sent: ' + cmd);
-      }
+      window.sendCommand = function(cmd) {
+        if (client && client.connected) {
+          const fullCmd = currentUser + ':' + cmd;
+          client.publish(topicCommand, fullCmd);
+          addLog('[' + currentUser + '] Sent: ' + cmd);
+        }
+      };
     }
 
     function addLog(msg) {
       const log = document.getElementById('log');
-      log.innerHTML = msg + '<br>' + log.innerHTML;
+      const time = new Date().toLocaleTimeString();
+      log.innerHTML = '[' + time + '] ' + msg + '<br>' + log.innerHTML;
     }
   </script>
 </body>
