@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RGB LED Control</title>
+  <style>
+    body { font-family: Arial; text-align: center; padding: 50px; background: #f0f0f0; }
+    h1 { color: #333; }
+    .btn {
+      display: inline-block;
+      width: 100px;
+      height: 100px;
+      margin: 20px;
+      border: none;
+      border-radius: 50%;
+      cursor: pointer;
+      font-size: 16px;
+      color: white;
+      transition: transform 0.2s;
+    }
+    .btn:hover { transform: scale(1.1); }
+    .btn-red { background: #ff4444; }
+    .btn-green { background: #44ff44; color: #333; }
+    .btn-blue { background: #4444ff; }
+    .btn-off { background: #888; }
+    .status { margin-top: 30px; font-size: 20px; }
+    .log { margin-top: 20px; font-size: 14px; color: #666; max-height: 150px; overflow-y: auto; border: 1px solid #ddd; padding: 10px; background: white; }
+    .connected { color: green; }
+    .disconnected { color: red; }
+
+    #loginBox, #registerBox {
+      background: white;
+      padding: 40px;
+      border-radius: 10px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+      max-width: 350px;
+      margin: 100px auto;
+    }
+    #loginBox input, #registerBox input {
+      width: 100%;
+      padding: 12px;
+      margin: 10px 0;
+      box-sizing: border-box;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+    }
+    #loginBox button, #registerBox button {
+      width: 100%;
+      padding: 12px;
+      margin-top: 10px;
+      background: #333;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    #loginBox button:hover, #registerBox button:hover { background: #555; }
+    #loginError, #regError { color: red; margin-top: 10px; }
+
+    #controlPanel { display: none; }
+    .device-info { background: #e8f5e9; padding: 10px; border-radius: 5px; margin: 10px 0; }
+    .user-badge { background: #2196F3; color: white; padding: 5px 15px; border-radius: 20px; display: inline-block; }
+    .loading { color: #666; font-size: 14px; }
+    a { color: #2196F3; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <div id="loginBox">
+    <h2>Login</h2>
+    <input type="text" id="username" placeholder="Username" />
+    <input type="password" id="password" placeholder="Password" />
+    <button onclick="login()">Login</button>
+    <div id="loginError"></div>
+    <p style="margin-top:15px; font-size:14px;">
+      Don't have account? <a onclick="showRegister()">Register</a>
+    </p>
+  </div>
+
+  <div id="registerBox">
+    <h2>Register</h2>
+    <input type="text" id="regUsername" placeholder="Username" />
+    <input type="password" id="regPassword" placeholder="Password" />
+    <button onclick="register()">Register</button>
+    <div id="regError"></div>
+    <p style="margin-top:15px; font-size:14px;">
+      Already have account? <a onclick="showLogin()">Login</a>
+    </p>
+  </div>
+
+  <div id="controlPanel">
+    <h1>RGB LED Control</h1>
+    <div class="device-info">
+      <span class="user-badge">User: <span id="myUsername">-</span></span>
+      | Device: <span id="deviceId">led001</span>
+      | Status: <span id="connectionStatus" class="disconnected">Checking...</span>
+    </div>
+    <div>
+      <button class="btn btn-red" onclick="sendCommand('red')">Red</button>
+      <button class="btn btn-green" onclick="sendCommand('green')">Green</button>
+      <button class="btn btn-blue" onclick="sendCommand('blue')">Blue</button>
+      <button class="btn btn-off" onclick="sendCommand('off')">OFF</button>
+    </div>
+    <div class="status">Current: <span id="currentColor">Unknown</span></div>
+    <div class="log" id="log"></div>
+    <button onclick="logout()" style="margin-top:30px; padding:10px 20px;">Logout</button>
+  </div>
+
+  <script>
+    const API_URL = 'https://esp32-backend-production-cfe5.up.railway.app';
+    let token = localStorage.getItem('token') || '';
+    let currentUser = localStorage.getItem('username') || '';
+
+    function showRegister() {
+      document.getElementById('loginBox').style.display = 'none';
+      document.getElementById('registerBox').style.display = 'block';
+    }
+
+    function showLogin() {
+      document.getElementById('registerBox').style.display = 'none';
+      document.getElementById('loginBox').style.display = 'block';
+    }
+
+    async function register() {
+      const username = document.getElementById('regUsername').value.trim();
+      const password = document.getElementById('regPassword').value;
+
+      if (!username || !password) {
+        document.getElementById('regError').innerText = 'Please fill all fields';
+        return;
+      }
+
+      try {
+        const res = await fetch(API_URL + '/api/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          alert('Registration successful! Please login.');
+          showLogin();
+          document.getElementById('username').value = username;
+        } else {
+          document.getElementById('regError').innerText = data.error || 'Registration failed';
+        }
+      } catch (err) {
+        document.getElementById('regError').innerText = 'Network error';
+      }
+    }
+
+    async function login() {
+      const username = document.getElementById('username').value.trim();
+      const password = document.getElementById('password').value;
+
+      if (!username || !password) {
+        document.getElementById('loginError').innerText = 'Please fill all fields';
+        return;
+      }
+
+      try {
+        const res = await fetch(API_URL + '/api/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          token = data.token;
+          currentUser = data.username;
+          localStorage.setItem('token', token);
+          localStorage.setItem('username', currentUser);
+          showControlPanel();
+        } else {
+          document.getElementById('loginError').innerText = data.error || 'Login failed';
+        }
+      } catch (err) {
+        document.getElementById('loginError').innerText = 'Network error';
+      }
+    }
+
+    async function showControlPanel() {
+      document.getElementById('loginBox').style.display = 'none';
+      document.getElementById('registerBox').style.display = 'none';
+      document.getElementById('controlPanel').style.display = 'block';
+      document.getElementById('myUsername').innerText = currentUser;
+      addLog('Welcome, ' + currentUser + '!');
+      checkDeviceStatus();
+      setInterval(checkDeviceStatus, 5000);
+    }
+
+    async function checkDeviceStatus() {
+      try {
+        const res = await fetch(API_URL + '/api/device/status', {
+          headers: { 'Authorization': 'Bearer ' + token }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          document.getElementById('currentColor').innerText = data.currentColor || 'Unknown';
+          document.getElementById('connectionStatus').innerText = 'Online';
+          document.getElementById('connectionStatus').className = 'connected';
+        } else {
+          document.getElementById('connectionStatus').innerText = 'Offline';
+          document.getElementById('connectionStatus').className = 'disconnected';
+        }
+      } catch (err) {
+        document.getElementById('connectionStatus').innerText = 'Error';
+        document.getElementById('connectionStatus').className = 'disconnected';
+      }
+    }
+
+    async function sendCommand(cmd) {
+      try {
+        const res = await fetch(API_URL + '/api/device/control', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + token
+          },
+          body: JSON.stringify({ command: cmd })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          addLog('[' + currentUser + '] Sent: ' + cmd);
+          setTimeout(checkDeviceStatus, 500);
+        } else {
+          addLog('Error: ' + (data.error || 'Control failed'));
+        }
+      } catch (err) {
+        addLog('Network error');
+      }
+    }
+
+    function logout() {
+      token = '';
+      currentUser = '';
+      localStorage.removeItem('token');
+      localStorage.removeItem('username');
+      document.getElementById('controlPanel').style.display = 'none';
+      document.getElementById('loginBox').style.display = 'block';
+      document.getElementById('username').value = '';
+      document.getElementById('password').value = '';
+      document.getElementById('log').innerHTML = '';
+    }
+
+    function addLog(msg) {
+      const log = document.getElementById('log');
+      const time = new Date().toLocaleTimeString();
+      log.innerHTML = '[' + time + '] ' + msg + '<br>' + log.innerHTML;
+    }
+
+    if (token && currentUser) {
+      showControlPanel();
+    }
+  </script>
+</body>
+</html>
